@@ -185,6 +185,12 @@
   .badge.up{background:var(--accent-soft); color:var(--accent);}
   .badge.down{background:var(--loss-soft); color:var(--loss);}
   .badge.gold{background:var(--gold-soft); color:var(--gold);}
+  .cur-tag{display:inline-block; margin-left:6px; padding:1px 6px; border-radius:6px; font-size:10px; font-weight:700; background:var(--surface-alt); color:var(--text-dim); border:1px solid var(--border); vertical-align:middle;}
+  .segmented2{display:flex; background:var(--surface-alt); border-radius:10px; padding:3px; margin-top:6px;}
+  .segmented2 div{flex:1; text-align:center; padding:8px 0; border-radius:8px; font-size:13px; font-weight:700; color:var(--text-dim); cursor:pointer;}
+  .segmented2 div.active{background:var(--accent); color:#04140F;}
+  .fx-row{display:flex; align-items:center; gap:8px;}
+  .fx-row input{width:90px; background:var(--surface-alt); border:1px solid var(--border); color:var(--text); font-size:13.5px; padding:8px 10px; border-radius:8px; font-family:inherit; outline:none;}
 
   /* yearly */
   .year-grid-wrap{display:grid; grid-template-columns:repeat(3,1fr); gap:14px;}
@@ -277,7 +283,7 @@
     <!-- DASHBOARD -->
     <div id="view-dashboard">
       <div class="topbar">
-        <div><h1>Dashboard</h1><div class="sub">Overview of your portfolio</div></div>
+        <div><h1>Dashboard</h1><div class="sub">Overview of your portfolio · totals shown in ₹, converted at 1 USD = ₹<span id="fxRateLabel">88</span></div>
         <div class="topbar-actions">
           <button class="btn primary" id="fabAdd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg>Add a buy</button>
         </div>
@@ -314,9 +320,9 @@
       </div>
       <div class="panel"><div class="table-wrap"><table class="dtable" id="holdingsTable">
         <thead><tr>
-          <th data-sort="stock">Stock</th><th data-sort="qty">Qty</th><th data-sort="avg">Avg Buy</th>
-          <th data-sort="cp">Current</th><th data-sort="invested">Invested</th><th data-sort="value">Value</th>
-          <th data-sort="pnl">P&L</th><th data-sort="pct">Return</th><th data-sort="cagr">CAGR</th><th style="text-align:right;">Actions</th>
+          <th data-sort="stock">Stock</th><th data-sort="qty">Qty</th><th data-sort="avgINR">Avg Buy</th>
+          <th data-sort="cpINR">Current</th><th data-sort="investedINR">Invested</th><th data-sort="valueINR">Value</th>
+          <th data-sort="pnlINR">P&L</th><th data-sort="pct">Return</th><th data-sort="cagr">CAGR</th><th style="text-align:right;">Actions</th>
         </tr></thead>
         <tbody id="holdingsBody"></tbody>
       </table></div></div>
@@ -333,7 +339,7 @@
       <div class="panel"><div class="table-wrap"><table class="dtable" id="historyTable">
         <thead><tr>
           <th data-sort="stock">Stock</th><th data-sort="qty">Qty</th><th data-sort="buy">Buy</th><th data-sort="sell">Sell</th>
-          <th data-sort="sellDate">Sell date</th><th data-sort="pnl">P&L</th><th data-sort="pct">Return</th><th data-sort="cagr">CAGR</th><th style="text-align:right;">Actions</th>
+          <th data-sort="sellDate">Sell date</th><th data-sort="pnlINR">P&L</th><th data-sort="pct">Return</th><th data-sort="cagr">CAGR</th><th style="text-align:right;">Actions</th>
         </tr></thead>
         <tbody id="historyBody"></tbody>
       </table></div></div>
@@ -368,12 +374,19 @@
   <div class="sheet">
     <h3 id="addSheetTitle">Add a buy</h3>
     <div class="sub">Log a stock purchase to your ledger</div>
-    <div class="field"><label>Stock name / symbol</label><input type="text" id="fStock" placeholder="e.g. RELIANCE, TCS, INFY" autocomplete="off"></div>
+    <div class="field"><label>Stock name / symbol</label><input type="text" id="fStock" placeholder="e.g. RELIANCE, TCS, INFY, AAPL" autocomplete="off"></div>
+    <div class="field">
+      <label>Currency</label>
+      <div class="segmented2" id="buyCurrencyToggle">
+        <div class="active" data-cur="INR">₹ INR</div>
+        <div data-cur="USD">$ USD</div>
+      </div>
+    </div>
     <div class="field-row">
       <div class="field"><label>Buy date</label><input type="date" id="fBuyDate"></div>
       <div class="field"><label>Quantity</label><input type="number" id="fQty" placeholder="0" min="0" step="any"></div>
     </div>
-    <div class="field"><label>Buy price per share (₹)</label><input type="number" id="fBuyPrice" placeholder="0.00" min="0" step="any"></div>
+    <div class="field"><label>Buy price per share (<span id="buyPriceCurSym">₹</span>)</label><input type="number" id="fBuyPrice" placeholder="0.00" min="0" step="any"></div>
     <button class="btn-main" id="saveBuyBtn">Add to ledger</button>
     <button class="btn-ghost" id="cancelAddBtn">Cancel</button>
   </div>
@@ -383,12 +396,12 @@
 <div class="overlay" id="overlaySell">
   <div class="sheet">
     <h3>Sell <span id="sellStockName"></span></h3>
-    <div class="sub">Holding <span id="sellAvailQty"></span> shares · avg buy ₹<span id="sellAvgPrice"></span></div>
+    <div class="sub">Holding <span id="sellAvailQty"></span> shares · avg buy <span id="sellAvgCur">₹</span><span id="sellAvgPrice"></span></div>
     <div class="field-row">
       <div class="field"><label>Sell date</label><input type="date" id="fSellDate"></div>
       <div class="field"><label>Quantity to sell</label><input type="number" id="fSellQty" placeholder="0" min="0" step="any"></div>
     </div>
-    <div class="field"><label>Sell price per share (₹)</label><input type="number" id="fSellPrice" placeholder="0.00" min="0" step="any"></div>
+    <div class="field"><label>Sell price per share (<span id="sellPriceCurSym">₹</span>)</label><input type="number" id="fSellPrice" placeholder="0.00" min="0" step="any"></div>
     <button class="btn-main" id="saveSellBtn">Confirm sell</button>
     <button class="btn-ghost" id="cancelSellBtn">Cancel</button>
   </div>
@@ -399,7 +412,7 @@
   <div class="sheet">
     <h3>Update current price</h3>
     <div class="sub"><span id="priceStockName"></span> · used to value your open holding</div>
-    <div class="field"><label>Current market price (₹)</label><input type="number" id="fCurrentPrice" placeholder="0.00" min="0" step="any"></div>
+    <div class="field"><label>Current market price (<span id="priceCurSym">₹</span>)</label><input type="number" id="fCurrentPrice" placeholder="0.00" min="0" step="any"></div>
     <button class="btn-main" id="savePriceBtn">Update</button>
     <button class="btn-ghost" id="cancelPriceBtn">Cancel</button>
   </div>
@@ -423,9 +436,16 @@
     <h3>Add dividend</h3>
     <div class="sub">Record dividend income received</div>
     <div class="field"><label>Stock name / symbol</label><input type="text" id="fDivStock" placeholder="e.g. RELIANCE" autocomplete="off"></div>
+    <div class="field">
+      <label>Currency</label>
+      <div class="segmented2" id="divCurrencyToggle">
+        <div class="active" data-cur="INR">₹ INR</div>
+        <div data-cur="USD">$ USD</div>
+      </div>
+    </div>
     <div class="field-row">
       <div class="field"><label>Date</label><input type="date" id="fDivDate"></div>
-      <div class="field"><label>Amount received (₹)</label><input type="number" id="fDivAmount" placeholder="0.00" min="0" step="any"></div>
+      <div class="field"><label>Amount received (<span id="divCurSym">₹</span>)</label><input type="number" id="fDivAmount" placeholder="0.00" min="0" step="any"></div>
     </div>
     <button class="btn-main" id="saveDividendBtn">Add dividend</button>
     <button class="btn-ghost" id="cancelDividendBtn">Cancel</button>
@@ -437,6 +457,9 @@
   <div class="sheet">
     <h3>Settings & data</h3>
     <div class="sub">Everything stays on this device (browser local storage)</div>
+    <div class="settings-row"><div><div>Exchange rate</div><div class="desc">Used to convert USD entries into ₹ totals — update it to today's rate</div></div>
+      <div class="fx-row">1 USD = ₹<input type="number" id="fFxRate" min="1" step="any"><div class="chip-btn primary" id="saveFxBtn">Save</div></div>
+    </div>
     <div class="settings-row"><div><div>Export backup (JSON)</div><div class="desc">Save all trades & dividends as a JSON file</div></div><div class="chip-btn primary" id="exportBtn">Export</div></div>
     <div class="settings-row"><div><div>Export CSV</div><div class="desc">Download all trades as a spreadsheet-ready CSV</div></div><div class="chip-btn" id="exportCsvBtn">Export</div></div>
     <div class="settings-row"><div><div>Import backup</div><div class="desc">Restore from a previously exported JSON file</div></div><div class="chip-btn" id="importBtn">Import</div></div>
@@ -469,6 +492,9 @@
     try{ currentPrices = JSON.parse(localStorage.getItem(PRICE_KEY)) || {}; }catch(e){ currentPrices = {}; }
     try{ dividends = JSON.parse(localStorage.getItem(DIV_KEY)) || []; }catch(e){ dividends = []; }
     try{ meta = JSON.parse(localStorage.getItem(META_KEY)) || {}; }catch(e){ meta = {}; }
+    if(!meta.fxRate || meta.fxRate <= 0) meta.fxRate = 88;
+    lots.forEach(function(l){ if(!l.currency) l.currency = 'INR'; });
+    dividends.forEach(function(d){ if(!d.currency) d.currency = 'INR'; });
   }
   function save(){
     localStorage.setItem(STORAGE_KEY, JSON.stringify(lots));
@@ -487,6 +513,17 @@
     return (opts.sign && !neg ? '+' : '') + (neg ? '-' : '') + '₹' + str;
   }
   function fmtNum(n, decimals){ n = Number(n) || 0; return n.toLocaleString('en-IN', {maximumFractionDigits: decimals !== undefined ? decimals : 2}); }
+  var CUR_SYMBOL = {INR:'₹', USD:'$'};
+  function fmtCur(n, currency, opts){
+    opts = opts || {};
+    var sym = CUR_SYMBOL[currency] || '₹';
+    n = Number(n) || 0;
+    var neg = n < 0; n = Math.abs(n);
+    var locale = currency === 'USD' ? 'en-US' : 'en-IN';
+    var str = n.toLocaleString(locale, {maximumFractionDigits: opts.decimals !== undefined ? opts.decimals : 0});
+    return (opts.sign && !neg ? '+' : '') + (neg ? '-' : '') + sym + str;
+  }
+  function toINR(n, currency){ n = Number(n) || 0; return currency === 'USD' ? n * (meta.fxRate || 88) : n; }
   function fmtPct(n){ return (n >= 0 ? '+' : '') + n.toFixed(1) + '%'; }
   function daysBetween(d1, d2){ var a = new Date(d1), b = new Date(d2); return Math.round((b - a) / 86400000); }
   function todayStr(){ var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
@@ -519,7 +556,7 @@
   function groupOpenByStock(){
     var map = {};
     openLots().forEach(function(l){
-      if(!map[l.stock]) map[l.stock] = { stock:l.stock, qty:0, invested:0, lots:[], oldestBuy:l.buyDate };
+      if(!map[l.stock]) map[l.stock] = { stock:l.stock, qty:0, invested:0, lots:[], oldestBuy:l.buyDate, currency: l.currency || 'INR' };
       map[l.stock].qty += l.qty;
       map[l.stock].invested += l.qty * l.buyPrice;
       map[l.stock].lots.push(l);
@@ -558,19 +595,22 @@
 
   // ---------- RENDER: DASHBOARD ----------
   function renderDashboard(){
+    var fxLabelEl = document.getElementById('fxRateLabel');
+    if(fxLabelEl) fxLabelEl.textContent = fmtNum(meta.fxRate, 2);
+
     var openGroups = groupOpenByStock();
     var totalInvested = 0, currentValue = 0;
     openGroups.forEach(function(g){
       var cp = currentPrices[g.stock];
       var val = (cp !== undefined ? cp : (g.invested / g.qty)) * g.qty;
-      totalInvested += g.invested; currentValue += val;
+      totalInvested += toINR(g.invested, g.currency); currentValue += toINR(val, g.currency);
     });
     var unrealised = currentValue - totalInvested;
 
     var realisedAll = 0;
-    closedLots().forEach(function(l){ realisedAll += (l.sellPrice - l.buyPrice) * l.qty; });
+    closedLots().forEach(function(l){ realisedAll += toINR((l.sellPrice - l.buyPrice) * l.qty, l.currency || 'INR'); });
 
-    var totalDividends = dividends.reduce(function(s,d){ return s + Number(d.amount||0); }, 0);
+    var totalDividends = dividends.reduce(function(s,d){ return s + toINR(Number(d.amount||0), d.currency || 'INR'); }, 0);
 
     document.getElementById('heroValue').textContent = fmtNum(currentValue, 0);
     document.getElementById('statInvested').textContent = fmtINR(totalInvested);
@@ -611,7 +651,7 @@
     }
     var slices = openGroups.map(function(g,i){
       var cp = currentPrices[g.stock];
-      var val = (cp !== undefined ? cp : (g.invested / g.qty)) * g.qty;
+      var val = toINR((cp !== undefined ? cp : (g.invested / g.qty)) * g.qty, g.currency);
       return { stock:g.stock, val:val, pct: (val/currentValue)*100, color: PALETTE[i % PALETTE.length] };
     }).sort(function(a,b){ return b.val - a.val; });
 
@@ -646,7 +686,9 @@
       var pct = g.invested > 0 ? (pnl / g.invested) * 100 : 0;
       var holdDays = daysBetween(g.oldestBuy, todayStr());
       var cg = hasPrice ? cagr(g.invested, value, holdDays) : null;
-      return { stock:g.stock, qty:g.qty, avg:avg, cp: hasPrice?cp:null, invested:g.invested, value:value, pnl:pnl, pct:pct, cagr:cg, hasPrice:hasPrice, holdDays:holdDays, lots:g.lots };
+      return { stock:g.stock, currency:g.currency, qty:g.qty, avg:avg, avgINR: toINR(avg, g.currency), cp: hasPrice?cp:null, cpINR: hasPrice ? toINR(cp, g.currency) : null,
+        invested:g.invested, investedINR: toINR(g.invested, g.currency), value:value, valueINR: toINR(value, g.currency),
+        pnl:pnl, pnlINR: toINR(pnl, g.currency), pct:pct, cagr:cg, hasPrice:hasPrice, holdDays:holdDays, lots:g.lots };
     });
 
     document.getElementById('holdingsCount').textContent = rows.length + ' stock' + (rows.length===1?'':'s');
@@ -660,13 +702,13 @@
     body.innerHTML = rows.map(function(r){
       var isOpen = !!expandedStocks[r.stock];
       var mainRow = '<tr class="row-main" data-stock="' + escapeAttr(r.stock) + '">' +
-        '<td class="stock-cell"><span class="expand-toggle' + (isOpen?' open':'') + '" data-toggle="' + escapeAttr(r.stock) + '"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 18l6-6-6-6"/></svg></span>' + escapeHtml(r.stock) + '</td>' +
+        '<td class="stock-cell"><span class="expand-toggle' + (isOpen?' open':'') + '" data-toggle="' + escapeAttr(r.stock) + '"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 18l6-6-6-6"/></svg></span>' + escapeHtml(r.stock) + '<span class="cur-tag">' + r.currency + '</span></td>' +
         '<td class="tabular">' + fmtNum(r.qty) + '</td>' +
-        '<td class="tabular">₹' + fmtNum(r.avg) + '</td>' +
-        '<td class="tabular">' + (r.hasPrice ? '₹' + fmtNum(r.cp) : '<span style="color:var(--text-faint)">—</span>') + '</td>' +
-        '<td class="tabular">' + fmtINR(r.invested) + '</td>' +
-        '<td class="tabular">' + (r.hasPrice ? fmtINR(r.value) : '—') + '</td>' +
-        '<td class="tabular">' + (r.hasPrice ? '<span class="badge ' + (r.pnl>=0?'up':'down') + '">' + fmtINR(r.pnl,{sign:true}) + '</span>' : '—') + '</td>' +
+        '<td class="tabular">' + fmtCur(r.avg, r.currency, {decimals:2}) + '</td>' +
+        '<td class="tabular">' + (r.hasPrice ? fmtCur(r.cp, r.currency, {decimals:2}) : '<span style="color:var(--text-faint)">—</span>') + '</td>' +
+        '<td class="tabular">' + fmtCur(r.invested, r.currency) + '</td>' +
+        '<td class="tabular">' + (r.hasPrice ? fmtCur(r.value, r.currency) : '—') + '</td>' +
+        '<td class="tabular">' + (r.hasPrice ? '<span class="badge ' + (r.pnl>=0?'up':'down') + '">' + fmtCur(r.pnl, r.currency, {sign:true}) + '</span>' : '—') + '</td>' +
         '<td class="tabular">' + (r.hasPrice ? '<span class="' + (r.pct>=0?'up':'down') + '" style="font-weight:700;">' + fmtPct(r.pct) + '</span>' : '—') + '</td>' +
         '<td class="tabular">' + (r.cagr !== null ? '<span class="' + (r.cagr>=0?'up':'down') + '" style="font-weight:700;">' + fmtPct(r.cagr) + '</span>' : '—') + '</td>' +
         '<td><div class="row-actions">' +
@@ -680,7 +722,7 @@
       if(isOpen){
         var lotLines = r.lots.map(function(l){
           var hd = daysBetween(l.buyDate, todayStr());
-          return '<div class="lot-line"><div class="f">' + fmtDate(l.buyDate) + '</div><div class="sp">Qty ' + fmtNum(l.qty) + ' @ ₹' + fmtNum(l.buyPrice) + ' · ' + hd + ' days held</div>' +
+          return '<div class="lot-line"><div class="f">' + fmtDate(l.buyDate) + '</div><div class="sp">Qty ' + fmtNum(l.qty) + ' @ ' + fmtCur(l.buyPrice, l.currency||'INR', {decimals:2}) + ' · ' + hd + ' days held</div>' +
             '<div class="icon-mini" data-action="edit-lot" data-lotid="' + l.id + '"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4z"/></svg></div>' +
             '<div class="icon-mini danger" data-action="delete-lot" data-lotid="' + l.id + '"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0l-1 14a2 2 0 01-2 2H7a2 2 0 01-2-2L4 6"/></svg></div></div>';
         }).join('');
@@ -698,13 +740,15 @@
     if(q) closed = closed.filter(function(l){ return l.stock.indexOf(q) !== -1; });
 
     var rows = closed.map(function(l){
+      var currency = l.currency || 'INR';
       var invested = l.buyPrice * l.qty;
       var got = l.sellPrice * l.qty;
       var pnl = got - invested;
       var pct = invested > 0 ? (pnl / invested) * 100 : 0;
       var holdDays = daysBetween(l.buyDate, l.sellDate);
       var cg = cagr(invested, got, holdDays);
-      return { id:l.id, stock:l.stock, qty:l.qty, buy:l.buyPrice, sell:l.sellPrice, sellDate:l.sellDate, pnl:pnl, pct:pct, cagr:cg, holdDays:holdDays, buyDate:l.buyDate };
+      return { id:l.id, stock:l.stock, currency:currency, qty:l.qty, buy:l.buyPrice, sell:l.sellPrice, sellDate:l.sellDate,
+        pnl:pnl, pnlINR: toINR(pnl, currency), pct:pct, cagr:cg, holdDays:holdDays, buyDate:l.buyDate };
     });
 
     document.getElementById('historyCount').textContent = rows.length + ' trade' + (rows.length===1?'':'s');
@@ -716,12 +760,12 @@
       return;
     }
     body.innerHTML = rows.map(function(r){
-      return '<tr class="row-main"><td class="stock-cell">' + escapeHtml(r.stock) + '</td>' +
+      return '<tr class="row-main"><td class="stock-cell">' + escapeHtml(r.stock) + '<span class="cur-tag">' + r.currency + '</span></td>' +
         '<td class="tabular">' + fmtNum(r.qty) + '</td>' +
-        '<td class="tabular">₹' + fmtNum(r.buy) + '</td>' +
-        '<td class="tabular">₹' + fmtNum(r.sell) + '</td>' +
+        '<td class="tabular">' + fmtCur(r.buy, r.currency, {decimals:2}) + '</td>' +
+        '<td class="tabular">' + fmtCur(r.sell, r.currency, {decimals:2}) + '</td>' +
         '<td>' + fmtDate(r.sellDate) + '</td>' +
-        '<td class="tabular"><span class="badge ' + (r.pnl>=0?'up':'down') + '">' + fmtINR(r.pnl,{sign:true}) + '</span></td>' +
+        '<td class="tabular"><span class="badge ' + (r.pnl>=0?'up':'down') + '">' + fmtCur(r.pnl, r.currency, {sign:true}) + '</span></td>' +
         '<td class="tabular"><span class="' + (r.pct>=0?'up':'down') + '" style="font-weight:700;">' + fmtPct(r.pct) + '</span></td>' +
         '<td class="tabular">' + (r.cagr !== null ? '<span class="' + (r.cagr>=0?'up':'down') + '" style="font-weight:700;">' + fmtPct(r.cagr) + '</span>' : '—') + '</td>' +
         '<td><div class="row-actions">' +
@@ -741,7 +785,7 @@
       return;
     }
     body.innerHTML = rows.map(function(d){
-      return '<tr class="row-main"><td class="stock-cell">' + escapeHtml(d.stock) + '</td><td>' + fmtDate(d.date) + '</td><td class="tabular">' + fmtINR(d.amount) + '</td>' +
+      return '<tr class="row-main"><td class="stock-cell">' + escapeHtml(d.stock) + '<span class="cur-tag">' + (d.currency||'INR') + '</span></td><td>' + fmtDate(d.date) + '</td><td class="tabular">' + fmtCur(d.amount, d.currency||'INR') + '</td>' +
         '<td><div class="row-actions"><div class="icon-mini danger" data-action="delete-dividend" data-divid="' + d.id + '"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0l-1 14a2 2 0 01-2 2H7a2 2 0 01-2-2L4 6"/></svg></div></div></td></tr>';
     }).join('');
   }
@@ -752,18 +796,18 @@
     lots.forEach(function(l){
       var by = yearOf(l.buyDate);
       if(!years[by]) years[by] = { invested:0, realised:0, realisedCount:0, dividends:0 };
-      years[by].invested += l.buyPrice * l.qty;
+      years[by].invested += toINR(l.buyPrice * l.qty, l.currency||'INR');
     });
     closedLots().forEach(function(l){
       var sy = yearOf(l.sellDate);
       if(!years[sy]) years[sy] = { invested:0, realised:0, realisedCount:0, dividends:0 };
-      years[sy].realised += (l.sellPrice - l.buyPrice) * l.qty;
+      years[sy].realised += toINR((l.sellPrice - l.buyPrice) * l.qty, l.currency||'INR');
       years[sy].realisedCount += 1;
     });
     dividends.forEach(function(d){
       var dy = yearOf(d.date);
       if(!years[dy]) years[dy] = { invested:0, realised:0, realisedCount:0, dividends:0 };
-      years[dy].dividends += Number(d.amount||0);
+      years[dy].dividends += toINR(Number(d.amount||0), d.currency||'INR');
     });
     var yearKeys = Object.keys(years).sort(function(a,b){ return b - a; });
     var el = document.getElementById('yearlyList');
@@ -819,6 +863,15 @@
   // ---------- ADD / EDIT BUY ----------
   var overlayAdd = document.getElementById('overlayAdd');
   var editingLotId = null;
+  var buyCurrency = 'INR';
+  function setBuyCurrency(cur){
+    buyCurrency = cur;
+    document.querySelectorAll('#buyCurrencyToggle div').forEach(function(d){ d.classList.toggle('active', d.getAttribute('data-cur') === cur); });
+    document.getElementById('buyPriceCurSym').textContent = CUR_SYMBOL[cur];
+  }
+  document.getElementById('buyCurrencyToggle').addEventListener('click', function(e){
+    var t = e.target.closest('[data-cur]'); if(t) setBuyCurrency(t.getAttribute('data-cur'));
+  });
   function openAddSheet(){
     editingLotId = null;
     document.getElementById('addSheetTitle').textContent = 'Add a buy';
@@ -828,6 +881,7 @@
     document.getElementById('fQty').value = '';
     document.getElementById('fBuyPrice').value = '';
     document.getElementById('fStock').removeAttribute('disabled');
+    setBuyCurrency('INR');
     overlayAdd.classList.add('show');
   }
   document.getElementById('fabAdd').addEventListener('click', openAddSheet);
@@ -847,16 +901,21 @@
       var lot = lots.find(function(l){ return l.id === editingLotId; });
       if(lot){
         if(lot.status === 'closed' && lot.sellDate && buyDate > lot.sellDate){ toast('Buy date must be before the sell date'); return; }
-        lot.stock = stock; lot.buyDate = buyDate; lot.qty = qty; lot.buyPrice = buyPrice;
+        lot.stock = stock; lot.buyDate = buyDate; lot.qty = qty; lot.buyPrice = buyPrice; lot.currency = buyCurrency;
       }
       toast('Trade updated');
     } else {
-      lots.push({ id: uid(), stock: stock, buyDate: buyDate, buyPrice: buyPrice, qty: qty, status: 'open' });
+      lots.push({ id: uid(), stock: stock, buyDate: buyDate, buyPrice: buyPrice, qty: qty, status: 'open', currency: buyCurrency });
       toast('Added ' + stock + ' to your ledger');
     }
     save(); renderAll();
     overlayAdd.classList.remove('show');
   });
+
+  function getStockCurrency(stock){
+    var l = lots.find(function(x){ return x.stock === stock; });
+    return l && l.currency ? l.currency : 'INR';
+  }
 
   function openEditLot(lotId){
     var lot = lots.find(function(l){ return l.id === lotId; });
@@ -868,6 +927,7 @@
     document.getElementById('fBuyDate').value = lot.buyDate;
     document.getElementById('fQty').value = lot.qty;
     document.getElementById('fBuyPrice').value = lot.buyPrice;
+    setBuyCurrency(lot.currency || 'INR');
     overlayAdd.classList.add('show');
   }
 
@@ -885,9 +945,12 @@
     var action = t.getAttribute('data-action');
     if(action === 'sell'){
       sellingStock = t.getAttribute('data-stock');
+      var sellCur = getStockCurrency(sellingStock);
       document.getElementById('sellStockName').textContent = sellingStock;
       document.getElementById('sellAvailQty').textContent = fmtNum(parseFloat(t.getAttribute('data-qty')));
       document.getElementById('sellAvgPrice').textContent = fmtNum(parseFloat(t.getAttribute('data-avg')));
+      document.getElementById('sellAvgCur').textContent = CUR_SYMBOL[sellCur];
+      document.getElementById('sellPriceCurSym').textContent = CUR_SYMBOL[sellCur];
       document.getElementById('fSellDate').value = todayStr();
       document.getElementById('fSellQty').value = '';
       document.getElementById('fSellPrice').value = '';
@@ -960,7 +1023,7 @@
       var l = stockLots[i];
       var take = Math.min(l.qty, remaining);
       if(take >= l.qty - 1e-9){ l.status = 'closed'; l.sellDate = sellDate; l.sellPrice = sellPrice; }
-      else { l.qty -= take; lots.push({ id: uid(), stock: l.stock, buyDate: l.buyDate, buyPrice: l.buyPrice, qty: take, status:'closed', sellDate: sellDate, sellPrice: sellPrice }); }
+      else { l.qty -= take; lots.push({ id: uid(), stock: l.stock, buyDate: l.buyDate, buyPrice: l.buyPrice, qty: take, status:'closed', sellDate: sellDate, sellPrice: sellPrice, currency: l.currency || 'INR' }); }
       remaining -= take;
     }
     save(); renderAll();
@@ -974,6 +1037,7 @@
   function openPriceSheet(stock){
     pricingStock = stock;
     document.getElementById('priceStockName').textContent = stock;
+    document.getElementById('priceCurSym').textContent = CUR_SYMBOL[getStockCurrency(stock)];
     document.getElementById('fCurrentPrice').value = currentPrices[stock] !== undefined ? currentPrices[stock] : '';
     overlayPrice.classList.add('show');
   }
@@ -1013,10 +1077,20 @@
 
   // ---------- DIVIDENDS ----------
   var overlayDividend = document.getElementById('overlayDividend');
+  var divCurrency = 'INR';
+  function setDivCurrency(cur){
+    divCurrency = cur;
+    document.querySelectorAll('#divCurrencyToggle div').forEach(function(d){ d.classList.toggle('active', d.getAttribute('data-cur') === cur); });
+    document.getElementById('divCurSym').textContent = CUR_SYMBOL[cur];
+  }
+  document.getElementById('divCurrencyToggle').addEventListener('click', function(e){
+    var t = e.target.closest('[data-cur]'); if(t) setDivCurrency(t.getAttribute('data-cur'));
+  });
   document.getElementById('addDividendBtn').addEventListener('click', function(){
     document.getElementById('fDivStock').value = '';
     document.getElementById('fDivDate').value = todayStr();
     document.getElementById('fDivAmount').value = '';
+    setDivCurrency('INR');
     overlayDividend.classList.add('show');
   });
   document.getElementById('cancelDividendBtn').addEventListener('click', function(){ overlayDividend.classList.remove('show'); });
@@ -1026,7 +1100,7 @@
     var date = document.getElementById('fDivDate').value;
     var amount = parseFloat(document.getElementById('fDivAmount').value);
     if(!stock || !date || !amount || amount<=0){ toast('Please fill all fields correctly'); return; }
-    dividends.push({ id: uid(), stock: stock, date: date, amount: amount });
+    dividends.push({ id: uid(), stock: stock, date: date, amount: amount, currency: divCurrency });
     save(); renderAll();
     overlayDividend.classList.remove('show');
     toast('Dividend recorded for ' + stock);
@@ -1034,7 +1108,17 @@
 
   // ---------- SETTINGS ----------
   var overlaySettings = document.getElementById('overlaySettings');
-  document.getElementById('settingsBtn').addEventListener('click', function(){ overlaySettings.classList.add('show'); });
+  document.getElementById('settingsBtn').addEventListener('click', function(){
+    document.getElementById('fFxRate').value = meta.fxRate || 88;
+    overlaySettings.classList.add('show');
+  });
+  document.getElementById('saveFxBtn').addEventListener('click', function(){
+    var r = parseFloat(document.getElementById('fFxRate').value);
+    if(!r || r<=0){ toast('Enter a valid rate'); return; }
+    meta.fxRate = r;
+    save(); renderAll();
+    toast('Exchange rate updated');
+  });
   document.getElementById('cancelSettingsBtn').addEventListener('click', function(){ overlaySettings.classList.remove('show'); });
   overlaySettings.addEventListener('click', function(e){ if(e.target === overlaySettings) overlaySettings.classList.remove('show'); });
 
@@ -1052,10 +1136,10 @@
   });
 
   document.getElementById('exportCsvBtn').addEventListener('click', function(){
-    var header = ['Stock','Status','Buy Date','Buy Price','Qty','Sell Date','Sell Price','P&L'];
+    var header = ['Stock','Currency','Status','Buy Date','Buy Price','Qty','Sell Date','Sell Price','P&L'];
     var rows = lots.map(function(l){
       var pnl = l.status === 'closed' ? ((l.sellPrice - l.buyPrice) * l.qty).toFixed(2) : '';
-      return [l.stock, l.status, l.buyDate, l.buyPrice, l.qty, l.sellDate||'', l.sellPrice||'', pnl];
+      return [l.stock, l.currency||'INR', l.status, l.buyDate, l.buyPrice, l.qty, l.sellDate||'', l.sellPrice||'', pnl];
     });
     var csv = header.join(',') + '\n' + rows.map(function(r){ return r.map(csvEscape).join(','); }).join('\n');
     var blob = new Blob([csv], {type:'text/csv'});
@@ -1079,6 +1163,8 @@
           lots = data.lots;
           currentPrices = data.currentPrices || {};
           dividends = Array.isArray(data.dividends) ? data.dividends : [];
+          lots.forEach(function(l){ if(!l.currency) l.currency = 'INR'; });
+          dividends.forEach(function(d){ if(!d.currency) d.currency = 'INR'; });
           save(); renderAll();
           overlaySettings.classList.remove('show');
           toast('Backup imported');
