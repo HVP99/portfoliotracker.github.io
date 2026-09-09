@@ -6,6 +6,7 @@
 <title>Trade Ledger — Portfolio Tracker</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0B0E14">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
@@ -254,9 +255,46 @@
   .toast.show{opacity:1; transform:translateY(0);}
 
   .footnote{font-size:11px; color:var(--text-faint); margin-top:24px; line-height:1.6;}
+
+  /* AUTH SCREEN */
+  .auth-screen{
+    position:fixed; inset:0; background:var(--bg); z-index:100;
+    display:flex; align-items:center; justify-content:center; padding:20px;
+  }
+  .auth-card{
+    width:100%; max-width:380px; background:var(--surface); border:1px solid var(--border);
+    border-radius:18px; padding:32px 28px;
+  }
+  .auth-card .logo{
+    width:44px; height:44px; border-radius:12px; background:var(--accent-soft);
+    display:flex; align-items:center; justify-content:center; color:var(--accent); margin-bottom:16px;
+  }
+  .auth-card h2{font-size:20px; font-weight:800; margin:0 0 4px 0;}
+  .auth-card .sub{font-size:13px; color:var(--text-dim); margin-bottom:22px;}
+  .auth-error{background:var(--loss-soft); color:var(--loss); font-size:12.5px; padding:10px 12px; border-radius:10px; margin-bottom:14px; display:none;}
+  .auth-error.show{display:block;}
+  .auth-toggle{text-align:center; font-size:13px; color:var(--text-dim); margin-top:16px;}
+  .auth-toggle a{color:var(--accent); font-weight:600; cursor:pointer; text-decoration:none;}
+  .auth-loading{display:none; text-align:center; padding:40px 0; color:var(--text-dim); font-size:13px;}
 </style>
 </head>
 <body>
+
+<!-- AUTH SCREEN -->
+<div class="auth-screen" id="authScreen">
+  <div class="auth-card">
+    <div class="logo"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 3v18h18"/><path d="M7 15l4-6 4 3 5-8"/></svg></div>
+    <h2 id="authTitle">Sign in</h2>
+    <div class="sub" id="authSub">Your trades sync to your account from any device</div>
+    <div class="auth-error" id="authError"></div>
+    <div class="field"><label>Email</label><input type="email" id="authEmail" placeholder="you@example.com" autocomplete="email"></div>
+    <div class="field"><label>Password</label><input type="password" id="authPassword" placeholder="••••••••" autocomplete="current-password"></div>
+    <button class="btn-main" id="authSubmitBtn">Sign in</button>
+    <div class="auth-toggle" id="authToggleWrap">New here? <a id="authToggleLink">Create an account</a></div>
+    <div class="auth-loading" id="authLoading">Loading your ledger…</div>
+  </div>
+</div>
+
 <div class="shell">
 
   <!-- SIDEBAR -->
@@ -274,6 +312,7 @@
     </div>
     <div class="sidebar-foot">
       <div class="navitem" id="settingsBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 005 15a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 10.6a1.65 1.65 0 001-1.51V9a2 2 0 114 0v.09A1.65 1.65 0 0015 10.6a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 15z"/></svg>Settings & data</div>
+      <div class="navitem" id="signOutBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>Sign out</div>
     </div>
   </aside>
 
@@ -475,34 +514,89 @@
 (function(){
   "use strict";
 
-  var STORAGE_KEY = 'tradeLedger.lots.v1';
-  var PRICE_KEY = 'tradeLedger.prices.v1';
-  var DIV_KEY = 'tradeLedger.dividends.v1';
-  var META_KEY = 'tradeLedger.meta.v1';
+  var SUPABASE_URL = 'https://fbbzfjmaswofckybdvtm.supabase.co';
+  var SUPABASE_KEY = 'sb_publishable_LGLaMTz-Hovlh4dbVaflJA_QjVu5W7k';
+  var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  var currentUser = null;
+  var LOCAL_BACKUP_KEY = 'tradeLedger.lastKnownGood.v1'; // safety net only, not primary storage
 
-  var lots = [];            // {id, stock, buyDate, buyPrice, qty, status:'open'|'closed', sellDate, sellPrice}
+  var lots = [];            // {id, stock, buyDate, buyPrice, qty, status:'open'|'closed', sellDate, sellPrice, currency}
   var currentPrices = {};   // { STOCK: price }
-  var dividends = [];       // {id, stock, date, amount}
-  var meta = {};            // {lastExportAt}
+  var dividends = [];       // {id, stock, date, amount, currency}
+  var meta = {fxRate:88};   // {lastExportAt, fxRate}
 
   var PALETTE = ['#00D9A3','#4C9AFF','#FFB020','#B084F5','#FF5C5C','#5AD1E6','#F58AC0','#9AE66E'];
 
-  function load(){
-    try{ lots = JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }catch(e){ lots = []; }
-    try{ currentPrices = JSON.parse(localStorage.getItem(PRICE_KEY)) || {}; }catch(e){ currentPrices = {}; }
-    try{ dividends = JSON.parse(localStorage.getItem(DIV_KEY)) || []; }catch(e){ dividends = []; }
-    try{ meta = JSON.parse(localStorage.getItem(META_KEY)) || {}; }catch(e){ meta = {}; }
-    if(!meta.fxRate || meta.fxRate <= 0) meta.fxRate = 88;
-    lots.forEach(function(l){ if(!l.currency) l.currency = 'INR'; });
-    dividends.forEach(function(d){ if(!d.currency) d.currency = 'INR'; });
+  function uid(){
+    if(window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c){
+      var r = Math.random()*16|0, v = c === 'x' ? r : (r&0x3|0x8);
+      return v.toString(16);
+    });
   }
+
+  function localBackupSave(){
+    try{ localStorage.setItem(LOCAL_BACKUP_KEY, JSON.stringify({lots:lots, currentPrices:currentPrices, dividends:dividends, meta:meta})); }catch(e){}
+  }
+
+  // ---------- CLOUD LOAD ----------
+  function loadFromCloud(){
+    if(!currentUser) return Promise.resolve();
+    var uidCol = currentUser.id;
+    return Promise.all([
+      sb.from('trades').select('*').eq('user_id', uidCol),
+      sb.from('dividends').select('*').eq('user_id', uidCol),
+      sb.from('prices').select('*').eq('user_id', uidCol),
+      sb.from('user_settings').select('*').eq('user_id', uidCol).maybeSingle()
+    ]).then(function(results){
+      var tRes = results[0], dRes = results[1], pRes = results[2], sRes = results[3];
+      if(tRes.error || dRes.error || pRes.error) throw (tRes.error || dRes.error || pRes.error);
+      lots = (tRes.data || []).map(function(r){
+        return { id:r.id, stock:r.stock, currency:r.currency||'INR', buyDate:r.buy_date, buyPrice:Number(r.buy_price), qty:Number(r.qty), status:r.status, sellDate:r.sell_date, sellPrice:r.sell_price !== null ? Number(r.sell_price) : undefined };
+      });
+      dividends = (dRes.data || []).map(function(r){
+        return { id:r.id, stock:r.stock, currency:r.currency||'INR', date:r.date, amount:Number(r.amount) };
+      });
+      currentPrices = {};
+      (pRes.data || []).forEach(function(r){ currentPrices[r.stock] = Number(r.price); });
+      meta.fxRate = (sRes.data && sRes.data.fx_rate) ? Number(sRes.data.fx_rate) : 88;
+      localBackupSave();
+    }).catch(function(err){
+      console.error(err);
+      toast('Could not load your data — check your connection');
+      try{
+        var backup = JSON.parse(localStorage.getItem(LOCAL_BACKUP_KEY));
+        if(backup){ lots = backup.lots||[]; dividends = backup.dividends||[]; currentPrices = backup.currentPrices||{}; meta = backup.meta||{fxRate:88}; }
+      }catch(e){}
+    });
+  }
+
+  // ---------- CLOUD SAVE (full resync — simple & safe for personal-scale data) ----------
+  var saveInFlight = null;
   function save(){
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(lots));
-    localStorage.setItem(PRICE_KEY, JSON.stringify(currentPrices));
-    localStorage.setItem(DIV_KEY, JSON.stringify(dividends));
-    localStorage.setItem(META_KEY, JSON.stringify(meta));
+    if(!currentUser) return;
+    localBackupSave();
+    var uidCol = currentUser.id;
+    var tradeRows = lots.map(function(l){
+      return { id:l.id, user_id:uidCol, stock:l.stock, currency:l.currency||'INR', buy_date:l.buyDate, buy_price:l.buyPrice, qty:l.qty, status:l.status, sell_date:l.sellDate||null, sell_price:(l.sellPrice===undefined?null:l.sellPrice) };
+    });
+    var divRows = dividends.map(function(d){
+      return { id:d.id, user_id:uidCol, stock:d.stock, currency:d.currency||'INR', date:d.date, amount:d.amount };
+    });
+    var priceRows = Object.keys(currentPrices).map(function(stock){
+      return { user_id:uidCol, stock:stock, price:currentPrices[stock] };
+    });
+    var job = sb.from('trades').delete().eq('user_id', uidCol)
+      .then(function(){ return sb.from('dividends').delete().eq('user_id', uidCol); })
+      .then(function(){ return sb.from('prices').delete().eq('user_id', uidCol); })
+      .then(function(){ return tradeRows.length ? sb.from('trades').insert(tradeRows) : null; })
+      .then(function(){ return divRows.length ? sb.from('dividends').insert(divRows) : null; })
+      .then(function(){ return priceRows.length ? sb.from('prices').insert(priceRows) : null; })
+      .then(function(){ return sb.from('user_settings').upsert({ user_id:uidCol, fx_rate: meta.fxRate || 88 }); })
+      .catch(function(err){ console.error(err); toast('Sync to cloud failed — will retry on next change'); });
+    saveInFlight = job;
+    return job;
   }
-  function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
 
   function fmtINR(n, opts){
     opts = opts || {};
@@ -1184,9 +1278,78 @@
     }
   });
 
+  // ---------- AUTH ----------
+  var authScreen = document.getElementById('authScreen');
+  var authMode = 'signin'; // or 'signup'
+  var authErrorEl = document.getElementById('authError');
+  var authLoadingEl = document.getElementById('authLoading');
+
+  function showAuthError(msg){ authErrorEl.textContent = msg; authErrorEl.classList.add('show'); }
+  function clearAuthError(){ authErrorEl.classList.remove('show'); authErrorEl.textContent = ''; }
+
+  function setAuthMode(mode){
+    authMode = mode;
+    clearAuthError();
+    if(mode === 'signup'){
+      document.getElementById('authTitle').textContent = 'Create an account';
+      document.getElementById('authSub').textContent = 'One account, your trades on every device';
+      document.getElementById('authSubmitBtn').textContent = 'Create account';
+      document.getElementById('authToggleWrap').innerHTML = 'Already have an account? <a id="authToggleLink">Sign in</a>';
+    } else {
+      document.getElementById('authTitle').textContent = 'Sign in';
+      document.getElementById('authSub').textContent = 'Your trades sync to your account from any device';
+      document.getElementById('authSubmitBtn').textContent = 'Sign in';
+      document.getElementById('authToggleWrap').innerHTML = 'New here? <a id="authToggleLink">Create an account</a>';
+    }
+    document.getElementById('authToggleLink').addEventListener('click', function(){ setAuthMode(mode === 'signup' ? 'signin' : 'signup'); });
+  }
+  setAuthMode('signin');
+
+  document.getElementById('authSubmitBtn').addEventListener('click', function(){
+    var email = document.getElementById('authEmail').value.trim();
+    var password = document.getElementById('authPassword').value;
+    clearAuthError();
+    if(!email || !password){ showAuthError('Enter both email and password'); return; }
+    if(password.length < 6){ showAuthError('Password must be at least 6 characters'); return; }
+    var action = authMode === 'signup' ? sb.auth.signUp({ email:email, password:password }) : sb.auth.signInWithPassword({ email:email, password:password });
+    action.then(function(res){
+      if(res.error){ showAuthError(res.error.message); return; }
+      if(authMode === 'signup' && !res.data.session){
+        showAuthError('Account created — check your email to confirm, then sign in.');
+        setAuthMode('signin');
+        return;
+      }
+      onSignedIn(res.data.session.user);
+    });
+  });
+
+  document.getElementById('signOutBtn').addEventListener('click', function(){
+    sb.auth.signOut().then(function(){
+      currentUser = null;
+      lots = []; dividends = []; currentPrices = {}; meta = {fxRate:88};
+      document.getElementById('authEmail').value = '';
+      document.getElementById('authPassword').value = '';
+      authScreen.style.display = 'flex';
+    });
+  });
+
+  function onSignedIn(user){
+    currentUser = user;
+    authLoadingEl.style.display = 'block';
+    loadFromCloud().then(function(){
+      renderAll();
+      authScreen.style.display = 'none';
+    });
+  }
+
   // ---------- INIT ----------
-  load();
-  renderAll();
+  authLoadingEl.style.display = 'none';
+  sb.auth.getSession().then(function(res){
+    var session = res.data && res.data.session;
+    if(session && session.user){
+      onSignedIn(session.user);
+    }
+  });
 
   // auto-backup reminder
   setTimeout(function(){
