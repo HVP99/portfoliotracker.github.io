@@ -361,13 +361,18 @@
       <div class="topbar">
         <div><h1>Open Holdings</h1><div class="sub" id="holdingsCount">0 stocks</div></div>
         <div class="topbar-actions">
+          <div class="segmented2" id="holdingsCurFilter" style="margin-top:0; min-width:180px;">
+            <div class="active" data-cur="ALL">All</div>
+            <div data-cur="INR">₹ India</div>
+            <div data-cur="USD">$ US</div>
+          </div>
           <div class="search-box"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg><input type="text" id="holdingsSearch" placeholder="Search stock..."></div>
           <button class="btn primary" id="fabAdd2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg>Add a buy</button>
         </div>
       </div>
       <div class="panel"><div class="table-wrap"><table class="dtable" id="holdingsTable">
         <thead><tr>
-          <th data-sort="stock">Stock</th><th data-sort="qty">Qty</th><th data-sort="avgINR">Avg Buy</th>
+          <th data-sort="stock">Stock</th><th data-sort="oldestBuy">Since</th><th data-sort="qty">Qty</th><th data-sort="avgINR">Avg Buy</th>
           <th data-sort="cpINR">Current</th><th data-sort="investedINR">Invested</th><th data-sort="valueINR">Value</th>
           <th data-sort="pnlINR">P&L</th><th data-sort="pct">Return</th><th data-sort="cagr">CAGR</th><th style="text-align:right;">Actions</th>
         </tr></thead>
@@ -380,12 +385,17 @@
       <div class="topbar">
         <div><h1>Closed Trades</h1><div class="sub" id="historyCount">0 trades</div></div>
         <div class="topbar-actions">
+          <div class="segmented2" id="historyCurFilter" style="margin-top:0; min-width:180px;">
+            <div class="active" data-cur="ALL">All</div>
+            <div data-cur="INR">₹ India</div>
+            <div data-cur="USD">$ US</div>
+          </div>
           <div class="search-box"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg><input type="text" id="historySearch" placeholder="Search stock..."></div>
         </div>
       </div>
       <div class="panel"><div class="table-wrap"><table class="dtable" id="historyTable">
         <thead><tr>
-          <th data-sort="stock">Stock</th><th data-sort="qty">Qty</th><th data-sort="buy">Buy</th><th data-sort="sell">Sell</th>
+          <th data-sort="stock">Stock</th><th data-sort="buyDate">Bought</th><th data-sort="qty">Qty</th><th data-sort="buy">Buy</th><th data-sort="sell">Sell</th>
           <th data-sort="sellDate">Sell date</th><th data-sort="pnlINR">P&L</th><th data-sort="pct">Return</th><th data-sort="cagr">CAGR</th><th style="text-align:right;">Actions</th>
         </tr></thead>
         <tbody id="historyBody"></tbody>
@@ -397,6 +407,11 @@
       <div class="topbar">
         <div><h1>Dividends</h1><div class="sub" id="dividendsCount">0 entries</div></div>
         <div class="topbar-actions">
+          <div class="segmented2" id="dividendsCurFilter" style="margin-top:0; min-width:180px;">
+            <div class="active" data-cur="ALL">All</div>
+            <div data-cur="INR">₹ India</div>
+            <div data-cur="USD">$ US</div>
+          </div>
           <button class="btn primary" id="addDividendBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg>Add dividend</button>
         </div>
       </div>
@@ -688,6 +703,9 @@
   var historySort = {key:'sellDate', dir:-1};
   var holdingsQuery = '';
   var historyQuery = '';
+  var holdingsCurFilter = 'ALL';
+  var historyCurFilter = 'ALL';
+  var dividendsCurFilter = 'ALL';
   var expandedStocks = {};
 
   function sortRows(rows, sortState){
@@ -809,6 +827,7 @@
     var groups = groupOpenByStock();
     var q = holdingsQuery.trim().toUpperCase();
     if(q) groups = groups.filter(function(g){ return g.stock.indexOf(q) !== -1; });
+    if(holdingsCurFilter !== 'ALL') groups = groups.filter(function(g){ return (g.currency||'INR') === holdingsCurFilter; });
 
     var rows = groups.map(function(g){
       var avg = g.invested / g.qty;
@@ -819,7 +838,7 @@
       var pct = g.invested > 0 ? (pnl / g.invested) * 100 : 0;
       var holdDays = daysBetween(g.oldestBuy, todayStr());
       var cg = hasPrice ? cagr(g.invested, value, holdDays) : null;
-      return { stock:g.stock, currency:g.currency, qty:g.qty, avg:avg, avgINR: toINR(avg, g.currency), cp: hasPrice?cp:null, cpINR: hasPrice ? toINR(cp, g.currency) : null,
+      return { stock:g.stock, currency:g.currency, oldestBuy:g.oldestBuy, qty:g.qty, avg:avg, avgINR: toINR(avg, g.currency), cp: hasPrice?cp:null, cpINR: hasPrice ? toINR(cp, g.currency) : null,
         invested:g.invested, investedINR: toINR(g.invested, g.currency), value:value, valueINR: toINR(value, g.currency),
         pnl:pnl, pnlINR: toINR(pnl, g.currency), pct:pct, cagr:cg, hasPrice:hasPrice, holdDays:holdDays, lots:g.lots };
     });
@@ -829,13 +848,14 @@
 
     var body = document.getElementById('holdingsBody');
     if(rows.length === 0){
-      body.innerHTML = '<tr><td colspan="10"><div class="empty"><span class="big">🗂️</span>No open holdings' + (q ? ' matching "'+escapeHtml(q)+'"' : '') + '.</div></td></tr>';
+      body.innerHTML = '<tr><td colspan="11"><div class="empty"><span class="big">🗂️</span>No open holdings' + (q ? ' matching "'+escapeHtml(q)+'"' : '') + '.</div></td></tr>';
       return;
     }
     body.innerHTML = rows.map(function(r){
       var isOpen = !!expandedStocks[r.stock];
       var mainRow = '<tr class="row-main" data-stock="' + escapeAttr(r.stock) + '">' +
         '<td class="stock-cell"><span class="expand-toggle' + (isOpen?' open':'') + '" data-toggle="' + escapeAttr(r.stock) + '"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 18l6-6-6-6"/></svg></span>' + escapeHtml(r.stock) + '<span class="cur-tag">' + r.currency + '</span></td>' +
+        '<td>' + fmtDate(r.oldestBuy) + '<div class="sub" style="font-size:11px; color:var(--text-faint);">' + r.holdDays + ' days</div></td>' +
         '<td class="tabular">' + fmtNum(r.qty) + '</td>' +
         '<td class="tabular">' + fmtCur(r.avg, r.currency, {decimals:2}) + '</td>' +
         '<td class="tabular">' + (r.hasPrice ? fmtCur(r.cp, r.currency, {decimals:2}) : '<span style="color:var(--text-faint)">—</span>') + '</td>' +
@@ -860,7 +880,7 @@
             '<div class="icon-mini danger" data-action="delete-lot" data-lotid="' + l.id + '"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0l-1 14a2 2 0 01-2 2H7a2 2 0 01-2-2L4 6"/></svg></div></div>';
         }).join('');
         var insight = r.hasPrice ? computeInsight(r.pct, r.holdDays, true) : 'Held ' + r.holdDays + ' days so far. Add current price for a full insight.';
-        detail = '<tr class="lot-detail-row"><td colspan="10"><div class="lot-detail-inner">' + lotLines + '<div class="insight-inline">💡 ' + insight + '</div></div></td></tr>';
+        detail = '<tr class="lot-detail-row"><td colspan="11"><div class="lot-detail-inner">' + lotLines + '<div class="insight-inline">💡 ' + insight + '</div></div></td></tr>';
       }
       return mainRow + detail;
     }).join('');
@@ -871,6 +891,7 @@
     var closed = closedLots();
     var q = historyQuery.trim().toUpperCase();
     if(q) closed = closed.filter(function(l){ return l.stock.indexOf(q) !== -1; });
+    if(historyCurFilter !== 'ALL') closed = closed.filter(function(l){ return (l.currency||'INR') === historyCurFilter; });
 
     var rows = closed.map(function(l){
       var currency = l.currency || 'INR';
@@ -889,11 +910,12 @@
 
     var body = document.getElementById('historyBody');
     if(rows.length === 0){
-      body.innerHTML = '<tr><td colspan="9"><div class="empty"><span class="big">🧾</span>No closed trades' + (q ? ' matching "'+escapeHtml(q)+'"' : '') + '.</div></td></tr>';
+      body.innerHTML = '<tr><td colspan="10"><div class="empty"><span class="big">🧾</span>No closed trades' + (q ? ' matching "'+escapeHtml(q)+'"' : '') + '.</div></td></tr>';
       return;
     }
     body.innerHTML = rows.map(function(r){
       return '<tr class="row-main"><td class="stock-cell">' + escapeHtml(r.stock) + '<span class="cur-tag">' + r.currency + '</span></td>' +
+        '<td>' + fmtDate(r.buyDate) + '</td>' +
         '<td class="tabular">' + fmtNum(r.qty) + '</td>' +
         '<td class="tabular">' + fmtCur(r.buy, r.currency, {decimals:2}) + '</td>' +
         '<td class="tabular">' + fmtCur(r.sell, r.currency, {decimals:2}) + '</td>' +
@@ -911,6 +933,7 @@
   // ---------- RENDER: DIVIDENDS ----------
   function renderDividends(){
     var rows = dividends.slice().sort(function(a,b){ return b.date.localeCompare(a.date); });
+    if(dividendsCurFilter !== 'ALL') rows = rows.filter(function(d){ return (d.currency||'INR') === dividendsCurFilter; });
     document.getElementById('dividendsCount').textContent = rows.length + ' entr' + (rows.length===1?'y':'ies');
     var body = document.getElementById('dividendsBody');
     if(rows.length === 0){
@@ -1023,6 +1046,19 @@
 
   document.getElementById('holdingsSearch').addEventListener('input', function(e){ holdingsQuery = e.target.value; renderHoldings(); });
   document.getElementById('historySearch').addEventListener('input', function(e){ historyQuery = e.target.value; renderHistory(); });
+
+  function bindCurFilter(elId, setFn, renderFn){
+    document.getElementById(elId).addEventListener('click', function(e){
+      var t = e.target.closest('[data-cur]');
+      if(!t) return;
+      document.querySelectorAll('#' + elId + ' div').forEach(function(d){ d.classList.toggle('active', d === t); });
+      setFn(t.getAttribute('data-cur'));
+      renderFn();
+    });
+  }
+  bindCurFilter('holdingsCurFilter', function(v){ holdingsCurFilter = v; }, renderHoldings);
+  bindCurFilter('historyCurFilter', function(v){ historyCurFilter = v; }, renderHistory);
+  bindCurFilter('dividendsCurFilter', function(v){ dividendsCurFilter = v; }, renderDividends);
 
   // ---------- ADD / EDIT BUY ----------
   var overlayAdd = document.getElementById('overlayAdd');
