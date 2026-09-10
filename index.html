@@ -301,7 +301,7 @@
   <aside class="sidebar">
     <div class="brand">
       <div class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 3v18h18"/><path d="M7 15l4-6 4 3 5-8"/></svg></div>
-      <div><div class="name">Trade Ledger</div><div class="tag">Your moves, tracked</div></div>
+      <div><div class="name">Trade Ledger</div><div class="tag" id="syncStatusText">●  Synced</div></div>
     </div>
     <div class="navlist">
       <div class="navitem active" data-view="dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 13h4v8H3zM10 8h4v13h-4zM17 3h4v18h-4z"/></svg>Dashboard</div>
@@ -344,6 +344,14 @@
         <div class="panel">
           <div class="panel-head"><h2>Allocation</h2><span class="count">by current value</span></div>
           <div id="allocationWrap"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>By currency</h2><span class="count">invested vs current, per currency</span></div>
+          <div id="currencyBreakdown"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Recent activity</h2><span class="count">buys & sells, most recent first</span></div>
+          <div id="activityList"></div>
         </div>
       </div>
     </div>
@@ -538,6 +546,12 @@
   function localBackupSave(){
     try{ localStorage.setItem(LOCAL_BACKUP_KEY, JSON.stringify({lots:lots, currentPrices:currentPrices, dividends:dividends, meta:meta})); }catch(e){}
   }
+  function setSyncStatus(ok, err){
+    var el = document.getElementById('syncStatusText');
+    if(!el) return;
+    if(ok){ el.textContent = '● Synced'; el.style.color = 'var(--accent)'; el.title = ''; }
+    else { el.textContent = '● Sync error — data saved on this device only'; el.style.color = 'var(--loss)'; el.title = err && err.message ? err.message : ''; }
+  }
 
   // ---------- CLOUD LOAD ----------
   function loadFromCloud(){
@@ -563,7 +577,7 @@
       localBackupSave();
     }).catch(function(err){
       console.error(err);
-      toast('Could not load your data — check your connection');
+      toast('Could not load your data — ' + (err && err.message ? err.message : 'check your connection'));
       try{
         var backup = JSON.parse(localStorage.getItem(LOCAL_BACKUP_KEY));
         if(backup){ lots = backup.lots||[]; dividends = backup.dividends||[]; currentPrices = backup.currentPrices||{}; meta = backup.meta||{fxRate:88}; }
@@ -593,7 +607,8 @@
       .then(function(){ return divRows.length ? sb.from('dividends').insert(divRows) : null; })
       .then(function(){ return priceRows.length ? sb.from('prices').insert(priceRows) : null; })
       .then(function(){ return sb.from('user_settings').upsert({ user_id:uidCol, fx_rate: meta.fxRate || 88 }); })
-      .catch(function(err){ console.error(err); toast('Sync to cloud failed — will retry on next change'); });
+      .then(function(){ setSyncStatus(true); })
+      .catch(function(err){ console.error(err); setSyncStatus(false, err); toast('Cloud sync failed — ' + (err && err.message ? err.message : 'will retry on next change')); });
     saveInFlight = job;
     return job;
   }
@@ -721,7 +736,7 @@
       var avg = g.invested / g.qty;
       var pct = cp !== undefined ? ((cp - avg) / avg) * 100 : 0;
       return { stock:g.stock, pct: pct, hasPrice: cp !== undefined };
-    }).sort(function(a,b){ return Math.abs(b.pct) - Math.abs(a.pct); }).slice(0,6);
+    }).sort(function(a,b){ return Math.abs(b.pct) - Math.abs(a.pct); });
 
     var moversList = document.getElementById('moversList');
     document.getElementById('moversCount').textContent = openGroups.length + ' holding' + (openGroups.length===1?'':'s');
@@ -735,6 +750,30 @@
     }
 
     renderAllocation(openGroups, currentValue);
+    renderCurrencyBreakdown(openGroups);
+  }
+
+  function renderCurrencyBreakdown(openGroups){
+    var el = document.getElementById('currencyBreakdown');
+    if(!el) return;
+    var byCur = {};
+    openGroups.forEach(function(g){
+      var cur = g.currency || 'INR';
+      if(!byCur[cur]) byCur[cur] = { invested:0, value:0, stocks:0 };
+      var cp = currentPrices[g.stock];
+      var val = (cp !== undefined ? cp : (g.invested / g.qty)) * g.qty;
+      byCur[cur].invested += g.invested;
+      byCur[cur].value += val;
+      byCur[cur].stocks += 1;
+    });
+    var keys = Object.keys(byCur);
+    if(keys.length === 0){ el.innerHTML = '<div class="empty"><span class="big">💱</span>No holdings yet.</div>'; return; }
+    el.innerHTML = keys.map(function(cur){
+      var d = byCur[cur];
+      var pnl = d.value - d.invested;
+      return '<div class="mover-row"><div><div class="nm">' + cur + ' holdings</div><div class="sub">' + d.stocks + ' stock' + (d.stocks===1?'':'s') + ' · invested ' + fmtCur(d.invested, cur) + '</div></div>' +
+        '<div class="pct ' + (pnl>=0?'up':'down') + '">' + fmtCur(d.value, cur) + '</div></div>';
+    }).join('');
   }
 
   function renderAllocation(openGroups, currentValue){
@@ -759,7 +798,7 @@
       return el;
     }).join('');
     var svg = '<svg width="120" height="120" viewBox="0 0 120 120">' + circles + '</svg>';
-    var legend = slices.slice(0,8).map(function(s){
+    var legend = slices.map(function(s){
       return '<div class="legend-row"><div class="legend-dot" style="background:' + s.color + '"></div><div class="nm">' + escapeHtml(s.stock) + '</div><div class="pc">' + s.pct.toFixed(1) + '%</div></div>';
     }).join('');
     wrap.innerHTML = '<div class="donut-wrap">' + svg + '<div class="legend">' + legend + '</div></div>';
@@ -923,7 +962,38 @@
     }).join('');
   }
 
-  function renderAll(){ renderDashboard(); renderHoldings(); renderHistory(); renderDividends(); renderYearly(); }
+  function renderActivity(){
+    var el = document.getElementById('activityList');
+    if(!el) return;
+    var events = [];
+    lots.forEach(function(l){
+      var cur = l.currency || 'INR';
+      events.push({ date:l.buyDate, type:'buy', stock:l.stock, qty:l.qty, price:l.buyPrice, currency:cur });
+      if(l.status === 'closed' && l.sellDate){
+        var pnl = (l.sellPrice - l.buyPrice) * l.qty;
+        var pct = l.buyPrice > 0 ? ((l.sellPrice - l.buyPrice)/l.buyPrice)*100 : 0;
+        events.push({ date:l.sellDate, type:'sell', stock:l.stock, qty:l.qty, price:l.sellPrice, currency:cur, pnl:pnl, pct:pct });
+      }
+    });
+    events.sort(function(a,b){ return b.date.localeCompare(a.date); });
+    events = events.slice(0, 15);
+    if(events.length === 0){ el.innerHTML = '<div class="empty"><span class="big">🕒</span>No activity yet.</div>'; return; }
+    el.innerHTML = events.map(function(e){
+      if(e.type === 'buy'){
+        return '<div class="mover-row"><div><div class="nm">' + escapeHtml(e.stock) + ' <span class="badge" style="background:var(--surface-alt); color:var(--text-dim);">BUY</span></div>' +
+          '<div class="sub">' + fmtDate(e.date) + ' · qty ' + fmtNum(e.qty) + ' @ ' + fmtCur(e.price, e.currency, {decimals:2}) + '</div></div></div>';
+      }
+      return '<div class="mover-row"><div><div class="nm">' + escapeHtml(e.stock) + ' <span class="badge ' + (e.pnl>=0?'up':'down') + '">SELL</span></div>' +
+        '<div class="sub">' + fmtDate(e.date) + ' · qty ' + fmtNum(e.qty) + ' @ ' + fmtCur(e.price, e.currency, {decimals:2}) + '</div></div>' +
+        '<div class="pct ' + (e.pnl>=0?'up':'down') + '">' + fmtCur(e.pnl, e.currency, {sign:true}) + ' (' + fmtPct(e.pct) + ')</div></div>';
+    }).join('');
+  }
+
+  function renderAll(){
+    [renderDashboard, renderActivity, renderHoldings, renderHistory, renderDividends, renderYearly].forEach(function(fn){
+      try{ fn(); }catch(e){ console.error('Render failed:', fn.name, e); }
+    });
+  }
 
   // ---------- NAV ----------
   var views = ['dashboard','holdings','history','dividends','yearly'];
