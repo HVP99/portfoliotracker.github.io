@@ -1102,8 +1102,8 @@
     }
     overlayAdd.classList.add('show');
   }
-  document.getElementById('fabAdd').addEventListener('click', openAddSheet);
-  document.getElementById('fabAdd2').addEventListener('click', openAddSheet);
+  document.getElementById('fabAdd').addEventListener('click', function(){ openAddSheet(); });
+  document.getElementById('fabAdd2').addEventListener('click', function(){ openAddSheet(); });
   document.getElementById('cancelAddBtn').addEventListener('click', function(){ overlayAdd.classList.remove('show'); });
   overlayAdd.addEventListener('click', function(e){ if(e.target === overlayAdd) overlayAdd.classList.remove('show'); });
 
