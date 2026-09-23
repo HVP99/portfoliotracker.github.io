@@ -222,12 +222,13 @@
   .sheet .sub{font-size:12.5px; color:var(--text-dim); margin-bottom:18px;}
   .field{margin-bottom:14px;}
   .field label{font-size:12.5px; color:var(--text-dim); font-weight:600; display:block; margin-bottom:6px;}
-  .field input, .field select{
+  .field input, .field select, .field textarea{
     width:100%; background:var(--surface-alt); border:1px solid var(--border);
     color:var(--text); font-size:14.5px; padding:11px 13px; border-radius:10px;
     font-family:inherit; outline:none;
   }
-  .field input:focus, .field select:focus{border-color:var(--accent);}
+  .field textarea{ resize:vertical; min-height:70px; }
+  .field input:focus, .field select:focus, .field textarea:focus{border-color:var(--accent);}
   .field-row{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
   .btn-main{
     width:100%; padding:13px; border-radius:12px; border:none;
@@ -350,6 +351,14 @@
         <div class="panel">
           <div class="panel-head"><h2>By currency</h2><span class="count">invested vs current, per currency</span></div>
           <div id="currencyBreakdown"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>By sector</h2><span class="count">current value share</span></div>
+          <div id="sectorBreakdown"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Invested over time</h2><span class="count">net capital deployed</span></div>
+          <div id="investedChart"></div>
         </div>
         <div class="panel">
           <div class="panel-head"><h2>Recent activity</h2><span class="count">buys & sells, most recent first</span></div>
@@ -515,6 +524,7 @@
       <div class="field"><label>Quantity</label><input type="number" id="fQty" placeholder="0" min="0" step="any"></div>
     </div>
     <div class="field"><label>Buy price per share (<span id="buyPriceCurSym">₹</span>)</label><input type="number" id="fBuyPrice" placeholder="0.00" min="0" step="any"></div>
+    <div class="field"><label>Sector (optional)</label><input type="text" id="fBuySector" placeholder="e.g. IT, Banking, Auto, FMCG" autocomplete="off"></div>
     <button class="btn-main" id="saveBuyBtn">Add to ledger</button>
     <button class="btn-ghost" id="cancelAddBtn">Cancel</button>
   </div>
@@ -543,6 +553,41 @@
     <div class="field"><label>Quantity to remove</label><input type="number" id="fRemoveQty" placeholder="0" min="0" step="any"></div>
     <button class="btn-main loss" id="saveRemoveBtn">Remove</button>
     <button class="btn-ghost" id="cancelRemoveBtn">Cancel</button>
+  </div>
+</div>
+
+<!-- AVERAGE CALCULATOR SHEET (calculation only, doesn't save) -->
+<div class="overlay" id="overlayAvgCalc">
+  <div class="sheet">
+    <h3>Average calculator <span id="avgCalcStockName"></span></h3>
+    <div class="sub">See what your average buy price would become — nothing is saved until you choose to add it</div>
+    <div class="field" style="background:var(--surface-alt); border-radius:10px; padding:10px 14px;">
+      <div style="font-size:12.5px; color:var(--text-dim);">Current holding</div>
+      <div style="font-size:15px; font-weight:700; margin-top:2px;">Qty <span id="avgCalcCurQty"></span> @ avg <span id="avgCalcCurAvgSym">₹</span><span id="avgCalcCurAvg"></span></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Additional quantity</label><input type="number" id="fAvgCalcQty" placeholder="0" min="0" step="any"></div>
+      <div class="field"><label>Price per share (<span id="avgCalcPriceSym">₹</span>)</label><input type="number" id="fAvgCalcPrice" placeholder="0.00" min="0" step="any"></div>
+    </div>
+    <div class="field" style="background:var(--accent-soft); border-radius:10px; padding:12px 14px; margin-top:4px;">
+      <div style="font-size:12.5px; color:var(--text-dim);">If you add this</div>
+      <div style="font-size:15px; font-weight:700; margin-top:4px; color:var(--accent);">New avg: <span id="avgCalcNewAvg">—</span></div>
+      <div style="font-size:12.5px; color:var(--text-dim); margin-top:2px;">New qty: <span id="avgCalcNewQty">—</span> · New total invested: <span id="avgCalcNewInvested">—</span></div>
+    </div>
+    <button class="btn-main" id="avgCalcAddBtn">Actually add this buy</button>
+    <button class="btn-ghost" id="cancelAvgCalcBtn">Close</button>
+  </div>
+</div>
+
+<!-- STOCK NOTE / THESIS SHEET -->
+<div class="overlay" id="overlayNote">
+  <div class="sheet">
+    <h3>Note for <span id="noteStockName"></span></h3>
+    <div class="sub">Tag a sector for the allocation chart, and jot down your thesis, price targets — whatever helps future-you</div>
+    <div class="field"><label>Sector (optional)</label><input type="text" id="fNoteSector" placeholder="e.g. IT, Banking, Auto, Pharma" autocomplete="off"></div>
+    <div class="field"><label>Notes / thesis (optional)</label><textarea id="fNoteText" rows="6" placeholder="e.g. Bought for long-term compounding, target 20% CAGR, review after Q4 results..."></textarea></div>
+    <button class="btn-main" id="saveNoteBtn">Save note</button>
+    <button class="btn-ghost" id="cancelNoteBtn">Close</button>
   </div>
 </div>
 
@@ -688,6 +733,7 @@
   var dividends = [];       // {id, stock, date, amount, currency}
   var ipos = [];            // {id, company, applyDate, lots, qtyApplied, price, status, qtyAllotted, listingDate, listingPrice, soldDate, soldPrice, notes}
   var wallet = [];          // {id, date, type:'deposit'|'withdrawal', amount, currency, notes}
+  var stockNotes = {};      // { STOCK: noteText }
   var meta = {fxRate:88};   // {lastExportAt, fxRate}
 
   var PALETTE = ['#00D9A3','#4C9AFF','#FFB020','#B084F5','#FF5C5C','#5AD1E6','#F58AC0','#9AE66E'];
@@ -701,7 +747,7 @@
   }
 
   function localBackupSave(){
-    try{ localStorage.setItem(LOCAL_BACKUP_KEY, JSON.stringify({lots:lots, currentPrices:currentPrices, dividends:dividends, ipos:ipos, wallet:wallet, meta:meta})); }catch(e){}
+    try{ localStorage.setItem(LOCAL_BACKUP_KEY, JSON.stringify({lots:lots, currentPrices:currentPrices, dividends:dividends, ipos:ipos, wallet:wallet, stockNotes:stockNotes, meta:meta})); }catch(e){}
   }
   function setSyncStatus(ok, err){
     var el = document.getElementById('syncStatusText');
@@ -720,12 +766,13 @@
       sb.from('prices').select('*').eq('user_id', uidCol),
       sb.from('ipos').select('*').eq('user_id', uidCol),
       sb.from('wallet_transactions').select('*').eq('user_id', uidCol),
+      sb.from('stock_notes').select('*').eq('user_id', uidCol),
       sb.from('user_settings').select('*').eq('user_id', uidCol).maybeSingle()
     ]).then(function(results){
-      var tRes = results[0], dRes = results[1], pRes = results[2], iRes = results[3], wRes = results[4], sRes = results[5];
+      var tRes = results[0], dRes = results[1], pRes = results[2], iRes = results[3], wRes = results[4], nRes = results[5], sRes = results[6];
       if(tRes.error || dRes.error || pRes.error) throw (tRes.error || dRes.error || pRes.error);
       lots = (tRes.data || []).map(function(r){
-        return { id:r.id, stock:r.stock, currency:r.currency||'INR', buyDate:r.buy_date, buyPrice:Number(r.buy_price), qty:Number(r.qty), status:r.status, sellDate:r.sell_date, sellPrice:r.sell_price !== null ? Number(r.sell_price) : undefined };
+        return { id:r.id, stock:r.stock, currency:r.currency||'INR', buyDate:r.buy_date, buyPrice:Number(r.buy_price), qty:Number(r.qty), status:r.status, sellDate:r.sell_date, sellPrice:r.sell_price !== null ? Number(r.sell_price) : undefined, sector:r.sector||'' };
       });
       dividends = (dRes.data || []).map(function(r){
         return { id:r.id, stock:r.stock, currency:r.currency||'INR', date:r.date, amount:Number(r.amount) };
@@ -741,6 +788,8 @@
       wallet = (wRes && !wRes.error ? (wRes.data || []) : []).map(function(r){
         return { id:r.id, date:r.date, type:r.type, amount:Number(r.amount), currency:r.currency||'INR', notes:r.notes||'' };
       });
+      stockNotes = {};
+      (nRes && !nRes.error ? (nRes.data || []) : []).forEach(function(r){ stockNotes[r.stock] = r.note; });
       meta.fxRate = (sRes.data && sRes.data.fx_rate) ? Number(sRes.data.fx_rate) : 88;
       localBackupSave();
     }).catch(function(err){
@@ -748,7 +797,7 @@
       toast('Could not load your data — ' + (err && err.message ? err.message : 'check your connection'));
       try{
         var backup = JSON.parse(localStorage.getItem(LOCAL_BACKUP_KEY));
-        if(backup){ lots = backup.lots||[]; dividends = backup.dividends||[]; currentPrices = backup.currentPrices||{}; ipos = backup.ipos||[]; wallet = backup.wallet||[]; meta = backup.meta||{fxRate:88}; }
+        if(backup){ lots = backup.lots||[]; dividends = backup.dividends||[]; currentPrices = backup.currentPrices||{}; ipos = backup.ipos||[]; wallet = backup.wallet||[]; stockNotes = backup.stockNotes||{}; meta = backup.meta||{fxRate:88}; }
       }catch(e){}
     });
   }
@@ -760,7 +809,7 @@
     localBackupSave();
     var uidCol = currentUser.id;
     var tradeRows = lots.map(function(l){
-      return { id:l.id, user_id:uidCol, stock:l.stock, currency:l.currency||'INR', buy_date:l.buyDate, buy_price:l.buyPrice, qty:l.qty, status:l.status, sell_date:l.sellDate||null, sell_price:(l.sellPrice===undefined?null:l.sellPrice) };
+      return { id:l.id, user_id:uidCol, stock:l.stock, currency:l.currency||'INR', buy_date:l.buyDate, buy_price:l.buyPrice, qty:l.qty, status:l.status, sell_date:l.sellDate||null, sell_price:(l.sellPrice===undefined?null:l.sellPrice), sector:l.sector||null };
     });
     var divRows = dividends.map(function(d){
       return { id:d.id, user_id:uidCol, stock:d.stock, currency:d.currency||'INR', date:d.date, amount:d.amount };
@@ -778,16 +827,21 @@
     var walletRows = wallet.map(function(w){
       return { id:w.id, user_id:uidCol, date:w.date, type:w.type, amount:w.amount, currency:w.currency||'INR', notes:w.notes||null };
     });
+    var noteRows = Object.keys(stockNotes).filter(function(s){ return stockNotes[s] && stockNotes[s].trim(); }).map(function(stock){
+      return { user_id:uidCol, stock:stock, note:stockNotes[stock] };
+    });
     var job = sb.from('trades').delete().eq('user_id', uidCol)
       .then(function(){ return sb.from('dividends').delete().eq('user_id', uidCol); })
       .then(function(){ return sb.from('prices').delete().eq('user_id', uidCol); })
       .then(function(){ return sb.from('ipos').delete().eq('user_id', uidCol); })
       .then(function(){ return sb.from('wallet_transactions').delete().eq('user_id', uidCol); })
+      .then(function(){ return sb.from('stock_notes').delete().eq('user_id', uidCol); })
       .then(function(){ return tradeRows.length ? sb.from('trades').insert(tradeRows) : null; })
       .then(function(){ return divRows.length ? sb.from('dividends').insert(divRows) : null; })
       .then(function(){ return priceRows.length ? sb.from('prices').insert(priceRows) : null; })
       .then(function(){ return ipoRows.length ? sb.from('ipos').insert(ipoRows) : null; })
       .then(function(){ return walletRows.length ? sb.from('wallet_transactions').insert(walletRows) : null; })
+      .then(function(){ return noteRows.length ? sb.from('stock_notes').insert(noteRows) : null; })
       .then(function(){ return sb.from('user_settings').upsert({ user_id:uidCol, fx_rate: meta.fxRate || 88 }); })
       .then(function(){ setSyncStatus(true); })
       .catch(function(err){ console.error(err); setSyncStatus(false, err); toast('Cloud sync failed — ' + (err && err.message ? err.message : 'will retry on next change')); });
@@ -847,7 +901,7 @@
   function groupOpenByStock(){
     var map = {};
     openLots().forEach(function(l){
-      if(!map[l.stock]) map[l.stock] = { stock:l.stock, qty:0, invested:0, lots:[], oldestBuy:l.buyDate, currency: l.currency || 'INR' };
+      if(!map[l.stock]) map[l.stock] = { stock:l.stock, qty:0, invested:0, lots:[], oldestBuy:l.buyDate, currency: l.currency || 'INR', sector: l.sector || '' };
       map[l.stock].qty += l.qty;
       map[l.stock].invested += l.qty * l.buyPrice;
       map[l.stock].lots.push(l);
@@ -936,6 +990,84 @@
 
     renderAllocation(openGroups, currentValue);
     renderCurrencyBreakdown(openGroups);
+    renderSectorBreakdown(openGroups, currentValue);
+    renderInvestedChart();
+  }
+
+  function renderSectorBreakdown(openGroups, currentValue){
+    var el = document.getElementById('sectorBreakdown');
+    if(!el) return;
+    if(openGroups.length === 0 || currentValue <= 0){
+      el.innerHTML = '<div class="empty"><span class="big">🏷️</span>No holdings yet.</div>';
+      return;
+    }
+    var bySector = {};
+    openGroups.forEach(function(g){
+      var sector = (g.sector && g.sector.trim()) ? g.sector.trim() : 'Untagged';
+      var cp = currentPrices[g.stock];
+      var val = toINR((cp !== undefined ? cp : (g.invested / g.qty)) * g.qty, g.currency);
+      if(!bySector[sector]) bySector[sector] = 0;
+      bySector[sector] += val;
+    });
+    var keys = Object.keys(bySector).sort(function(a,b){ return bySector[b] - bySector[a]; });
+    el.innerHTML = keys.map(function(sector, i){
+      var val = bySector[sector];
+      var pct = (val/currentValue)*100;
+      return '<div class="mover-row"><div style="display:flex; align-items:center; gap:8px;"><div class="legend-dot" style="background:' + PALETTE[i % PALETTE.length] + '"></div><div class="nm">' + escapeHtml(sector) + '</div></div>' +
+        '<div class="pct">' + pct.toFixed(1) + '% · ' + fmtINR(val) + '</div></div>';
+    }).join('');
+  }
+
+  function renderInvestedChart(){
+    var el = document.getElementById('investedChart');
+    if(!el) return;
+    // Build cumulative net-capital-deployed events from every buy/sell across all lots
+    var events = [];
+    lots.forEach(function(l){
+      var cur = l.currency || 'INR';
+      events.push({ date:l.buyDate, delta: toINR(l.buyPrice * l.qty, cur) });
+      if(l.status === 'closed' && l.sellDate){
+        events.push({ date:l.sellDate, delta: -toINR(l.sellPrice * l.qty, cur) });
+      }
+    });
+    if(events.length === 0){
+      el.innerHTML = '<div class="empty"><span class="big">📉</span>No activity yet to chart.</div>';
+      return;
+    }
+    events.sort(function(a,b){ return a.date.localeCompare(b.date); });
+    var running = 0;
+    var byDate = {};
+    var order = [];
+    events.forEach(function(e){
+      running += e.delta;
+      if(!(e.date in byDate)) order.push(e.date);
+      byDate[e.date] = running;
+    });
+    var points = order.map(function(d){ return { date:d, value: byDate[d] }; });
+    if(points.length === 1) points.unshift({ date: points[0].date, value: 0 });
+
+    var w = 100, h = 40, pad = 2;
+    var maxV = Math.max.apply(null, points.map(function(p){ return p.value; }));
+    var minV = Math.min(0, Math.min.apply(null, points.map(function(p){ return p.value; })));
+    var range = (maxV - minV) || 1;
+    var n = points.length;
+    var coords = points.map(function(p, i){
+      var x = pad + (i/(n-1 || 1)) * (w - 2*pad);
+      var y = h - pad - ((p.value - minV)/range) * (h - 2*pad);
+      return x.toFixed(2) + ',' + y.toFixed(2);
+    });
+    var pathD = 'M' + coords.join(' L');
+    var areaD = pathD + ' L' + (w-pad) + ',' + (h-pad) + ' L' + pad + ',' + (h-pad) + ' Z';
+    var lastVal = points[points.length-1].value;
+
+    var svg = '<svg width="100%" height="130" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" style="display:block;">' +
+      '<path d="' + areaD + '" fill="var(--accent-soft)" stroke="none"></path>' +
+      '<path d="' + pathD + '" fill="none" stroke="var(--accent)" stroke-width="0.6" vector-effect="non-scaling-stroke"></path>' +
+      '</svg>';
+    el.innerHTML = svg +
+      '<div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-dim); margin-top:6px;">' +
+        '<div>' + fmtDate(points[0].date) + '</div><div>Now: <b style="color:var(--text);">' + fmtINR(lastVal) + '</b></div><div>' + fmtDate(points[points.length-1].date) + '</div>' +
+      '</div>';
   }
 
   function renderCurrencyBreakdown(openGroups){
@@ -1033,6 +1165,8 @@
         '<td class="tabular">' + (r.cagr !== null ? '<span class="' + (r.cagr>=0?'up':'down') + '" style="font-weight:700;">' + fmtPct(r.cagr) + '</span>' : '—') + '</td>' +
         '<td><div class="row-actions">' +
           '<div class="chip-btn primary" data-action="addmore" data-stock="' + escapeAttr(r.stock) + '" data-currency="' + r.currency + '">+ Add</div>' +
+          '<div class="chip-btn" data-action="avgcalc" data-stock="' + escapeAttr(r.stock) + '" data-qty="' + r.qty + '" data-avg="' + r.avg + '" data-currency="' + r.currency + '">Avg Calc</div>' +
+          '<div class="chip-btn" data-action="note" data-stock="' + escapeAttr(r.stock) + '">' + (stockNotes[r.stock] ? '📝 Note' : 'Note') + '</div>' +
           '<div class="chip-btn" data-action="remove" data-stock="' + escapeAttr(r.stock) + '" data-qty="' + r.qty + '" data-currency="' + r.currency + '">Remove</div>' +
           '<div class="chip-btn" data-action="price" data-stock="' + escapeAttr(r.stock) + '">Price</div>' +
           '<div class="chip-btn" data-action="split" data-stock="' + escapeAttr(r.stock) + '">Split</div>' +
@@ -1382,6 +1516,7 @@
     document.getElementById('fBuyDate').value = todayStr();
     document.getElementById('fQty').value = '';
     document.getElementById('fBuyPrice').value = '';
+    document.getElementById('fBuySector').value = prefill && prefill.sector ? prefill.sector : (prefill ? getStockSector(prefill.stock) : '');
     if(prefill){
       document.getElementById('fStock').setAttribute('disabled', 'disabled');
       setBuyCurrency(prefill.currency || 'INR');
@@ -1401,6 +1536,7 @@
     var buyDate = document.getElementById('fBuyDate').value;
     var qty = parseFloat(document.getElementById('fQty').value);
     var buyPrice = parseFloat(document.getElementById('fBuyPrice').value);
+    var sector = document.getElementById('fBuySector').value.trim();
     if(!stock || !buyDate || !qty || qty<=0 || !buyPrice || buyPrice<=0){ toast('Please fill all fields correctly'); return; }
     if(buyDate > todayStr()){ toast('Buy date cannot be in the future'); return; }
 
@@ -1408,11 +1544,11 @@
       var lot = lots.find(function(l){ return l.id === editingLotId; });
       if(lot){
         if(lot.status === 'closed' && lot.sellDate && buyDate > lot.sellDate){ toast('Buy date must be before the sell date'); return; }
-        lot.stock = stock; lot.buyDate = buyDate; lot.qty = qty; lot.buyPrice = buyPrice; lot.currency = buyCurrency;
+        lot.stock = stock; lot.buyDate = buyDate; lot.qty = qty; lot.buyPrice = buyPrice; lot.currency = buyCurrency; lot.sector = sector;
       }
       toast('Trade updated');
     } else {
-      lots.push({ id: uid(), stock: stock, buyDate: buyDate, buyPrice: buyPrice, qty: qty, status: 'open', currency: buyCurrency });
+      lots.push({ id: uid(), stock: stock, buyDate: buyDate, buyPrice: buyPrice, qty: qty, status: 'open', currency: buyCurrency, sector: sector });
       toast('Added ' + stock + ' to your ledger');
     }
     save(); renderAll();
@@ -1422,6 +1558,10 @@
   function getStockCurrency(stock){
     var l = lots.find(function(x){ return x.stock === stock; });
     return l && l.currency ? l.currency : 'INR';
+  }
+  function getStockSector(stock){
+    var l = lots.find(function(x){ return x.stock === stock; });
+    return l && l.sector ? l.sector : '';
   }
 
   function openEditLot(lotId){
@@ -1435,6 +1575,7 @@
     document.getElementById('fBuyDate').value = lot.buyDate;
     document.getElementById('fQty').value = lot.qty;
     document.getElementById('fBuyPrice').value = lot.buyPrice;
+    document.getElementById('fBuySector').value = lot.sector || '';
     setBuyCurrency(lot.currency || 'INR');
     overlayAdd.classList.add('show');
   }
@@ -1453,6 +1594,10 @@
     var action = t.getAttribute('data-action');
     if(action === 'addmore'){
       openAddSheet({ stock: t.getAttribute('data-stock'), currency: t.getAttribute('data-currency') });
+    } else if(action === 'avgcalc'){
+      openAvgCalcSheet(t.getAttribute('data-stock'), parseFloat(t.getAttribute('data-qty')), parseFloat(t.getAttribute('data-avg')), t.getAttribute('data-currency'));
+    } else if(action === 'note'){
+      openNoteSheet(t.getAttribute('data-stock'));
     } else if(action === 'remove'){
       openRemoveSheet(t.getAttribute('data-stock'), parseFloat(t.getAttribute('data-qty')));
     } else if(action === 'sell'){
@@ -1572,6 +1717,74 @@
     save(); renderAll();
     overlayRemove.classList.remove('show');
     toast('Removed ' + fmtNum(removeQty) + ' ' + removingStock);
+  });
+
+  // ---------- AVERAGE CALCULATOR (pure calculation, no save) ----------
+  var overlayAvgCalc = document.getElementById('overlayAvgCalc');
+  var avgCalcData = null;
+  function openAvgCalcSheet(stock, curQty, curAvg, currency){
+    avgCalcData = { stock:stock, qty:curQty, avg:curAvg, currency:currency };
+    document.getElementById('avgCalcStockName').textContent = stock;
+    document.getElementById('avgCalcCurQty').textContent = fmtNum(curQty);
+    document.getElementById('avgCalcCurAvg').textContent = fmtNum(curAvg, 2);
+    document.getElementById('avgCalcCurAvgSym').textContent = CUR_SYMBOL[currency] || '₹';
+    document.getElementById('avgCalcPriceSym').textContent = CUR_SYMBOL[currency] || '₹';
+    document.getElementById('fAvgCalcQty').value = '';
+    document.getElementById('fAvgCalcPrice').value = '';
+    document.getElementById('avgCalcNewQty').textContent = '—';
+    document.getElementById('avgCalcNewAvg').textContent = '—';
+    document.getElementById('avgCalcNewInvested').textContent = '—';
+    overlayAvgCalc.classList.add('show');
+  }
+  function recomputeAvgCalc(){
+    if(!avgCalcData) return;
+    var addQty = parseFloat(document.getElementById('fAvgCalcQty').value);
+    var addPrice = parseFloat(document.getElementById('fAvgCalcPrice').value);
+    if(!addQty || addQty<=0 || !addPrice || addPrice<=0){
+      document.getElementById('avgCalcNewQty').textContent = '—';
+      document.getElementById('avgCalcNewAvg').textContent = '—';
+      document.getElementById('avgCalcNewInvested').textContent = '—';
+      return;
+    }
+    var newQty = avgCalcData.qty + addQty;
+    var newInvested = (avgCalcData.qty * avgCalcData.avg) + (addQty * addPrice);
+    var newAvg = newInvested / newQty;
+    document.getElementById('avgCalcNewQty').textContent = fmtNum(newQty);
+    document.getElementById('avgCalcNewAvg').textContent = fmtCur(newAvg, avgCalcData.currency, {decimals:2});
+    document.getElementById('avgCalcNewInvested').textContent = fmtCur(newInvested, avgCalcData.currency);
+  }
+  document.getElementById('fAvgCalcQty').addEventListener('input', recomputeAvgCalc);
+  document.getElementById('fAvgCalcPrice').addEventListener('input', recomputeAvgCalc);
+  document.getElementById('cancelAvgCalcBtn').addEventListener('click', function(){ overlayAvgCalc.classList.remove('show'); });
+  overlayAvgCalc.addEventListener('click', function(e){ if(e.target === overlayAvgCalc) overlayAvgCalc.classList.remove('show'); });
+  document.getElementById('avgCalcAddBtn').addEventListener('click', function(){
+    if(!avgCalcData) return;
+    var addQty = document.getElementById('fAvgCalcQty').value;
+    var addPrice = document.getElementById('fAvgCalcPrice').value;
+    overlayAvgCalc.classList.remove('show');
+    openAddSheet({ stock: avgCalcData.stock, currency: avgCalcData.currency });
+    if(addQty) document.getElementById('fQty').value = addQty;
+    if(addPrice) document.getElementById('fBuyPrice').value = addPrice;
+  });
+
+  // ---------- STOCK NOTES ----------
+  var overlayNote = document.getElementById('overlayNote');
+  var notingStock = null;
+  function openNoteSheet(stock){
+    notingStock = stock;
+    document.getElementById('noteStockName').textContent = stock;
+    document.getElementById('fNoteText').value = stockNotes[stock] || '';
+    overlayNote.classList.add('show');
+  }
+  document.getElementById('cancelNoteBtn').addEventListener('click', function(){ overlayNote.classList.remove('show'); });
+  overlayNote.addEventListener('click', function(e){ if(e.target === overlayNote) overlayNote.classList.remove('show'); });
+  document.getElementById('saveNoteBtn').addEventListener('click', function(){
+    var text = document.getElementById('fNoteText').value.trim();
+    if(text) stockNotes[notingStock] = text;
+    else delete stockNotes[notingStock];
+    save(); renderAll();
+    overlayNote.classList.remove('show');
+    toast('Note saved for ' + notingStock);
   });
 
   // ---------- CURRENT PRICE ----------
@@ -1829,7 +2042,7 @@
   overlaySettings.addEventListener('click', function(e){ if(e.target === overlaySettings) overlaySettings.classList.remove('show'); });
 
   document.getElementById('exportBtn').addEventListener('click', function(){
-    var data = { lots: lots, currentPrices: currentPrices, dividends: dividends, ipos: ipos, wallet: wallet, exportedAt: new Date().toISOString() };
+    var data = { lots: lots, currentPrices: currentPrices, dividends: dividends, ipos: ipos, wallet: wallet, stockNotes: stockNotes, exportedAt: new Date().toISOString() };
     var blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
@@ -1871,6 +2084,7 @@
           dividends = Array.isArray(data.dividends) ? data.dividends : [];
           ipos = Array.isArray(data.ipos) ? data.ipos : [];
           wallet = Array.isArray(data.wallet) ? data.wallet : [];
+          stockNotes = (data.stockNotes && typeof data.stockNotes === 'object') ? data.stockNotes : {};
           lots.forEach(function(l){ if(!l.currency) l.currency = 'INR'; });
           dividends.forEach(function(d){ if(!d.currency) d.currency = 'INR'; });
           save(); renderAll();
@@ -1885,7 +2099,7 @@
 
   document.getElementById('clearBtn').addEventListener('click', function(){
     if(confirm('This will permanently delete all trades and dividends on this device. Continue?')){
-      lots = []; currentPrices = {}; dividends = []; ipos = []; wallet = [];
+      lots = []; currentPrices = {}; dividends = []; ipos = []; wallet = []; stockNotes = {};
       save(); renderAll();
       overlaySettings.classList.remove('show');
       toast('All data cleared');
@@ -1940,7 +2154,7 @@
   document.getElementById('signOutBtn').addEventListener('click', function(){
     sb.auth.signOut().then(function(){
       currentUser = null;
-      lots = []; dividends = []; currentPrices = {}; ipos = []; wallet = []; meta = {fxRate:88};
+      lots = []; dividends = []; currentPrices = {}; ipos = []; wallet = []; stockNotes = {}; meta = {fxRate:88};
       document.getElementById('authEmail').value = '';
       document.getElementById('authPassword').value = '';
       authScreen.style.display = 'flex';
